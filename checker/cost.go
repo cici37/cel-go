@@ -15,7 +15,6 @@
 package checker
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/google/cel-go/common"
@@ -264,7 +263,7 @@ type coster struct {
 	computedSizes      map[int64]SizeEstimate
 	checkedAST         *ast.CheckedAST
 	estimator          CostEstimator
-	functionEstimators map[string]FunctionEstimator
+	overloadEstimators map[string]FunctionEstimator
 	// presenceTestCost will either be a zero or one based on whether has() macros count against cost computations.
 	presenceTestCost CostEstimate
 }
@@ -308,14 +307,13 @@ func PresenceTestHasCost(hasCost bool) CostOption {
 // FunctionEstimator provides a CallEstimate given the target and arguments for a specific function, overload pair.
 type FunctionEstimator func(estimator CostEstimator, target *AstNode, args []AstNode) *CallEstimate
 
-// FunctionCostEstimate binds a FunctionCoster to a specific function, overload pair.
+// OverloadCostEstimate binds a FunctionCoster to a specific function overload ID.
 //
-// When a FunctionCostEstimate is provided, it will override the cost calculation of the CostEstimator provided to
+// When a OverloadCostEstimate is provided, it will override the cost calculation of the CostEstimator provided to
 // the Cost() call.
-func FunctionCostEstimate(function, overloadID string, functionCoster FunctionEstimator) CostOption {
+func OverloadCostEstimate(overloadID string, functionCoster FunctionEstimator) CostOption {
 	return func(c *coster) error {
-		functionKey := fmt.Sprintf("%s|%s", function, overloadID)
-		c.functionEstimators[functionKey] = functionCoster
+		c.overloadEstimators[overloadID] = functionCoster
 		return nil
 	}
 }
@@ -325,7 +323,7 @@ func Cost(checker *ast.CheckedAST, estimator CostEstimator, opts ...CostOption) 
 	c := &coster{
 		checkedAST:         checker,
 		estimator:          estimator,
-		functionEstimators: map[string]FunctionEstimator{},
+		overloadEstimators: map[string]FunctionEstimator{},
 		exprPath:           map[int64][]string{},
 		iterRanges:         map[string][]int64{},
 		computedSizes:      map[int64]SizeEstimate{},
@@ -550,9 +548,8 @@ func (c *coster) functionCost(function, overloadID string, target *AstNode, args
 		}
 		return sum
 	}
-	if len(c.functionEstimators) != 0 {
-		functionKey := fmt.Sprintf("%s|%s", function, overloadID)
-		if estimator, found := c.functionEstimators[functionKey]; found {
+	if len(c.overloadEstimators) != 0 {
+		if estimator, found := c.overloadEstimators[overloadID]; found {
 			if est := estimator(c.estimator, target, args); est != nil {
 				callEst := *est
 				return CallEstimate{CostEstimate: callEst.Add(argCostSum()), ResultSize: est.ResultSize}
