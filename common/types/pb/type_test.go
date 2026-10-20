@@ -245,19 +245,28 @@ func TestFieldDescriptionGetFrom(t *testing.T) {
 		if !found {
 			t.Fatalf("td.FieldByName(%q) not found", field)
 		}
-		got, err := f.GetFrom(msg)
-		if err != nil {
-			t.Fatalf("field.GetFrom() failed: %v", err)
+		for _, target := range []any{msg, msg.ProtoReflect()} {
+			got, err := f.GetFrom(target)
+			if err != nil {
+				t.Fatalf("field.GetFrom(%T) failed: %v", target, err)
+			}
+			switch g := got.(type) {
+			case proto.Message:
+				if !proto.Equal(g, want.(proto.Message)) {
+					t.Errorf("got field %s value %v, wanted %v", field, g, want)
+				}
+			default:
+				if !reflect.DeepEqual(g, want) {
+					t.Errorf("got field %s value %v, wanted %v", field, g, want)
+				}
+			}
 		}
-		switch g := got.(type) {
-		case proto.Message:
-			if !proto.Equal(g, want.(proto.Message)) {
-				t.Errorf("got field %s value %v, wanted %v", field, g, want)
-			}
-		default:
-			if !reflect.DeepEqual(g, want) {
-				t.Errorf("got field %s value %v, wanted %v", field, g, want)
-			}
+		// Mismatched message descriptor should return an error rather than panic.
+		if _, err := f.GetFrom(&proto3pb.TestAllTypes_NestedMessage{Bb: 1}); err == nil {
+			t.Errorf("field.GetFrom(mismatched message) succeeded for %s, wanted error", field)
+		}
+		if _, err := f.GetFrom((&proto3pb.TestAllTypes_NestedMessage{Bb: 1}).ProtoReflect()); err == nil {
+			t.Errorf("field.GetFrom(mismatched protoreflect.Message) succeeded for %s, wanted error", field)
 		}
 	}
 }
@@ -286,7 +295,17 @@ func TestFieldDescriptionIsSet(t *testing.T) {
 			isSet: true,
 		},
 		{
+			msg:   (&proto3pb.TestAllTypes{SingleBool: true}).ProtoReflect(),
+			field: "single_bool",
+			isSet: true,
+		},
+		{
 			msg:   &proto3pb.TestAllTypes{},
+			field: "single_bool",
+			isSet: false,
+		},
+		{
+			msg:   (&proto3pb.TestAllTypes{}).ProtoReflect(),
 			field: "single_bool",
 			isSet: false,
 		},
@@ -297,6 +316,21 @@ func TestFieldDescriptionIsSet(t *testing.T) {
 		},
 		{
 			msg:   (&proto3pb.TestAllTypes{}),
+			field: "single_bool",
+			isSet: false,
+		},
+		{
+			msg:   (*proto3pb.TestAllTypes)(nil),
+			field: "single_bool",
+			isSet: false,
+		},
+		{
+			msg:   &proto3pb.TestAllTypes_NestedMessage{Bb: 1},
+			field: "single_bool",
+			isSet: false,
+		},
+		{
+			msg:   (&proto3pb.TestAllTypes_NestedMessage{Bb: 1}).ProtoReflect(),
 			field: "single_bool",
 			isSet: false,
 		},
